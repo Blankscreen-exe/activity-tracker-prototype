@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:ActivityTracker"
         xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
         mc:Ignorable="d"
-        Title="Activity Tracker" Height="780" Width="740">
+        Title="Activity Tracker" Height="780" Width="740" Icon="Assets/AppIcon.ico">
     <Grid x:Name="RootGrid">
         <TabControl x:Name="MainTabControl" Margin="10" SelectionChanged="MainTabControl_SelectionChanged">
 
