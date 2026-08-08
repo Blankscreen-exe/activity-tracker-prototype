@@ -4,6 +4,10 @@ A Windows desktop app that tracks which window (and, for browsers, which tab) is
 the foreground and how long you spend on it, with a WPF UI, a CLI summary command,
 and both a SQLite database and structured JSONL logs.
 
+## Preview
+
+![preview](docs/images/preview.png)
+
 ## Features
 
 - Tracks the active window/process, and for supported browsers (Chrome, Edge, Brave,
