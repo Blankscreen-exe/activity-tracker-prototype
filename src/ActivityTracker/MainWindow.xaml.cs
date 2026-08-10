@@ -7,6 +7,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
@@ -30,6 +31,9 @@ namespace ActivityTracker;
 /// </summary>
 public partial class MainWindow : Window
 {
+    private static readonly Geometry PlayIconGeometry = Geometry.Parse("M 4,2 L 4,22 L 20,12 Z");
+    private static readonly Geometry PauseIconGeometry = Geometry.Parse("M 4,2 L 9,2 L 9,22 L 4,22 Z M 15,2 L 20,2 L 20,22 L 15,22 Z");
+
     private readonly TrackingService _trackingService = new();
     private readonly DispatcherTimer _refreshTimer;
     private bool _isTracking;
@@ -37,6 +41,8 @@ public partial class MainWindow : Window
     private DateTime? _currentSessionStartUtc;
     private List<Session> _timelineSessions = new();
     private DateTime _timelineDate = DateTime.Today;
+    private int? _selectedMemoEditId;
+    private string _selectedMemoEditColorHex = "#316AC5";
 
     public MainWindow()
     {
@@ -66,7 +72,147 @@ public partial class MainWindow : Window
         RefreshMemoPickers();
         RefreshTimelineTab();
         RefreshTrendsTab();
-        StartTracking();
+
+        RefreshMemosTab();
+
+        // Tracking no longer auto-starts - the user explicitly hits Start.
+        // Still populate the Tracker tab once so it doesn't sit blank.
+        StatusIconPath.Data = PlayIconGeometry;
+        UpdateCurrentMemoDisplay();
+        RefreshTrackerTab();
+    }
+
+    private void RefreshMemosTab()
+    {
+        using var db = new AppDbContext();
+        var memos = db.Memos.OrderBy(m => m.Name).ToList();
+
+        MemoManagementList.ItemsSource = memos
+            .Select(m => new MemoRow
+            {
+                MemoId = m.Id,
+                Name = m.Name,
+                ColorHex = m.Color,
+                ColorBrush = BrushFromHex(m.Color)
+            })
+            .ToList();
+
+        _selectedMemoEditId = null;
+        MemoEditNameBox.Text = string.Empty;
+        MemoEditColorSwatch.Background = Brushes.Transparent;
+    }
+
+    private void MemoManagementList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MemoManagementList.SelectedItem is not MemoRow row)
+        {
+            return;
+        }
+
+        _selectedMemoEditId = row.MemoId;
+        _selectedMemoEditColorHex = row.ColorHex;
+        MemoEditNameBox.Text = row.Name;
+        MemoEditColorSwatch.Background = row.ColorBrush;
+    }
+
+    private void MemoEditColorButton_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new System.Windows.Forms.ColorDialog();
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+        {
+            return;
+        }
+
+        _selectedMemoEditColorHex = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+        MemoEditColorSwatch.Background = BrushFromHex(_selectedMemoEditColorHex);
+    }
+
+    private void SaveMemoEditButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedMemoEditId == null)
+        {
+            MessageBox.Show(this, "Select a memo first.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var newName = (MemoEditNameBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            MessageBox.Show(this, "Memo name can't be empty.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var oldName = (string?)null;
+
+        using (var db = new AppDbContext())
+        {
+            var memo = db.Memos.First(m => m.Id == _selectedMemoEditId);
+            oldName = memo.Name;
+            memo.Name = newName;
+            memo.Color = _selectedMemoEditColorHex;
+            db.SaveChanges();
+        }
+
+        // Renaming the currently-active memo needs the config to follow it,
+        // since AppSettings.ActiveMemoName stores the name, not the id.
+        if (AppSettings.Current.ActiveMemoName == oldName)
+        {
+            AppSettings.Current.ActiveMemoName = newName;
+            AppSettings.Save();
+        }
+
+        RefreshMemosTab();
+        RefreshMemoPickers();
+        UpdateCurrentMemoDisplay();
+    }
+
+    private void DeleteMemoButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedMemoEditId == null)
+        {
+            MessageBox.Show(this, "Select a memo first.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            this,
+            "Delete this memo? Sessions tagged with it will become untagged.",
+            "Activity Tracker",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        using (var db = new AppDbContext())
+        {
+            var memo = db.Memos.First(m => m.Id == _selectedMemoEditId);
+
+            if (AppSettings.Current.ActiveMemoName == memo.Name)
+            {
+                AppSettings.Current.ActiveMemoName = null;
+                AppSettings.Save();
+            }
+
+            // Explicitly null out referencing sessions before deleting the
+            // memo, rather than relying on EF Core's default optional-FK
+            // cascade behavior (which only affects already-tracked entities).
+            var taggedSessions = db.Sessions.Where(s => s.MemoId == memo.Id).ToList();
+            foreach (var session in taggedSessions)
+            {
+                session.MemoId = null;
+            }
+
+            db.Memos.Remove(memo);
+            db.SaveChanges();
+        }
+
+        RefreshMemosTab();
+        RefreshMemoPickers();
+        UpdateCurrentMemoDisplay();
+        RefreshTrackerTab();
     }
 
     private void ToggleButton_Click(object sender, RoutedEventArgs e)
@@ -86,7 +232,8 @@ public partial class MainWindow : Window
         _trackingService.Start();
         _refreshTimer.Start();
         _isTracking = true;
-        ToggleButton.Content = "Stop Tracking";
+        Title = "Activity Tracker - Tracking";
+        StatusIconPath.Data = PauseIconGeometry;
         RefreshTrackerTab();
     }
 
@@ -102,7 +249,9 @@ public partial class MainWindow : Window
         _isTracking = false;
         _currentActivityDisplay = "-";
         _currentSessionStartUtc = null;
-        ToggleButton.Content = "Start Tracking";
+        Title = "Activity Tracker - Paused";
+        StatusIconPath.Data = PlayIconGeometry;
+        UpdateMarquee("Not tracking");
         RefreshTrackerTab();
     }
 
@@ -110,7 +259,88 @@ public partial class MainWindow : Window
     {
         _currentActivityDisplay = $"{session.Process} - {session.WindowTitle}";
         _currentSessionStartUtc = session.Start;
+        UpdateMarquee(_currentActivityDisplay);
         RefreshTrackerTab();
+    }
+
+    // Scrolls the text horizontally if it's wider than the visible box;
+    // otherwise leaves it still. Only called when the tracked activity
+    // actually changes, not on every 10s refresh - restarting the animation
+    // mid-scroll on every tick would look like a jarring reset.
+    private void UpdateMarquee(string text)
+    {
+        MarqueeText.Text = text;
+        MarqueeText.BeginAnimation(Canvas.LeftProperty, null);
+        MarqueeText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+
+        var textWidth = MarqueeText.DesiredSize.Width;
+        var containerWidth = MarqueeCanvas.ActualWidth;
+
+        if (containerWidth <= 0 || textWidth <= containerWidth)
+        {
+            Canvas.SetLeft(MarqueeText, 0);
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = containerWidth,
+            To = -textWidth,
+            Duration = TimeSpan.FromSeconds(Math.Max(4, textWidth / 40.0)),
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+
+        MarqueeText.BeginAnimation(Canvas.LeftProperty, animation);
+    }
+
+    private void UpdateCurrentMemoDisplay()
+    {
+        var name = AppSettings.Current.ActiveMemoName;
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            CurrentMemoInlineText.Text = "(none)";
+            CurrentMemoInlineText.Foreground = (Brush)FindResource("WmpTextBrush");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var memo = db.Memos.FirstOrDefault(m => m.Name == name);
+
+        CurrentMemoInlineText.Text = name;
+        CurrentMemoInlineText.Foreground = memo != null ? BrushFromHex(memo.Color) : (Brush)FindResource("WmpTextBrush");
+    }
+
+    private void PickCurrentMemoColorButton_Click(object sender, RoutedEventArgs e)
+    {
+        var name = (CurrentMemoBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            MessageBox.Show(this, "Set a memo name first.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        using var dialog = new System.Windows.Forms.ColorDialog();
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+        {
+            return;
+        }
+
+        var hex = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+
+        using (var db = new AppDbContext())
+        {
+            var memoId = MemoRepository.ResolveOrCreate(db, name);
+            var memo = db.Memos.First(m => m.Id == memoId);
+            memo.Color = hex;
+            db.SaveChanges();
+        }
+
+        AppSettings.Current.ActiveMemoName = name;
+        AppSettings.Save();
+
+        RefreshMemoPickers();
+        UpdateCurrentMemoDisplay();
     }
 
     // Tracker tab always shows "today", live.
@@ -118,17 +348,9 @@ public partial class MainWindow : Window
     {
         var stats = StatsCalculator.Calculate(DateTime.Today);
 
-        var currentSessionDuration = _currentSessionStartUtc.HasValue
+        SessionDurationText.Text = _currentSessionStartUtc.HasValue
             ? (DateTime.UtcNow - _currentSessionStartUtc.Value).ToString(@"hh\:mm\:ss")
-            : "-";
-
-        StatusList.ItemsSource = new List<KeyValueRow>
-        {
-            new() { Label = "Status", Value = _isTracking ? "Tracking" : "Stopped" },
-            new() { Label = "Currently Tracking", Value = _currentActivityDisplay },
-            new() { Label = "Current Session Duration", Value = currentSessionDuration },
-            new() { Label = "Current Memo", Value = AppSettings.Current.ActiveMemoName ?? "(none)" }
-        };
+            : "00:00:00";
 
         var topWebsite = stats.TopWebsites.Count > 0
             ? $"{stats.TopWebsites[0].Domain} ({stats.TopWebsites[0].Time:hh\\:mm\\:ss})"
@@ -333,6 +555,10 @@ public partial class MainWindow : Window
         {
             RefreshTrendsTab();
         }
+        else if (MainTabControl.SelectedItem == MemosTabItem)
+        {
+            RefreshMemosTab();
+        }
     }
 
     private void RefreshTrendsButton_Click(object sender, RoutedEventArgs e)
@@ -458,6 +684,7 @@ public partial class MainWindow : Window
 
         AppSettings.Save();
         RefreshMemoPickers();
+        UpdateCurrentMemoDisplay();
         RefreshTrackerTab();
     }
 
@@ -466,6 +693,7 @@ public partial class MainWindow : Window
         AppSettings.Current.ActiveMemoName = null;
         CurrentMemoBox.Text = string.Empty;
         AppSettings.Save();
+        UpdateCurrentMemoDisplay();
         RefreshTrackerTab();
     }
 
@@ -494,7 +722,21 @@ public partial class MainWindow : Window
                 : query.OrderBy(s => s.Start).ToList();
         }
 
-        TimelineList.ItemsSource = _timelineSessions
+        RefreshTimelineMemoFilterOptions();
+        ApplyTimelineFilters();
+    }
+
+    // Search box filters by window title (substring, case-insensitive); the
+    // memo dropdown filters to a specific memo, "(No memo)", or "(All)".
+    // Both apply to the list AND the strip below - the strip keeps the full
+    // day's time span as its reference frame, it just leaves gaps where
+    // filtered-out sessions would have been, so filtered results still show
+    // *when* in the day they happened.
+    private void ApplyTimelineFilters()
+    {
+        var filtered = GetFilteredTimelineSessions().ToList();
+
+        TimelineList.ItemsSource = filtered
             .Select(s => new TimelineRow
             {
                 SessionId = s.Id,
@@ -509,7 +751,60 @@ public partial class MainWindow : Window
 
         DeleteTimelineButton.IsEnabled = false;
 
-        RefreshTimelineStrip();
+        RefreshTimelineStrip(filtered);
+    }
+
+    private IEnumerable<Session> GetFilteredTimelineSessions()
+    {
+        IEnumerable<Session> sessions = _timelineSessions;
+
+        var search = TimelineSearchBox.Text?.Trim();
+        if (!string.IsNullOrEmpty(search))
+        {
+            sessions = sessions.Where(s => s.WindowTitle.Contains(search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var memoFilter = TimelineMemoFilterBox.SelectedItem as string;
+        if (memoFilter == "(No memo)")
+        {
+            sessions = sessions.Where(s => s.Memo == null);
+        }
+        else if (!string.IsNullOrEmpty(memoFilter) && memoFilter != "(All)")
+        {
+            sessions = sessions.Where(s => s.Memo != null && s.Memo.Name == memoFilter);
+        }
+
+        return sessions;
+    }
+
+    // Rebuilds the memo dropdown's options from whatever memos actually
+    // appear on the selected date, keeping the previous selection if it's
+    // still a valid option (e.g. after a date/sort refresh).
+    private void RefreshTimelineMemoFilterOptions()
+    {
+        var previousSelection = TimelineMemoFilterBox.SelectedItem as string;
+
+        var options = new List<string> { "(All)", "(No memo)" };
+        options.AddRange(_timelineSessions
+            .Where(s => s.Memo != null)
+            .Select(s => s.Memo!.Name)
+            .Distinct()
+            .OrderBy(name => name));
+
+        TimelineMemoFilterBox.ItemsSource = options;
+        TimelineMemoFilterBox.SelectedItem = previousSelection != null && options.Contains(previousSelection)
+            ? previousSelection
+            : options[0];
+    }
+
+    private void TimelineSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        ApplyTimelineFilters();
+    }
+
+    private void TimelineMemoFilterBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ApplyTimelineFilters();
     }
 
     private void TimelineList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -549,14 +844,17 @@ public partial class MainWindow : Window
 
     private void TimelineStripCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        RefreshTimelineStrip();
+        ApplyTimelineFilters();
     }
 
-    // Draws each session as a colored rectangle positioned by start time and
-    // sized by duration, spanning from the day's earliest session to either
-    // "now" (if viewing today) or the day's latest session end. Hovering a
-    // rectangle shows a tooltip with its label and duration.
-    private void RefreshTimelineStrip()
+    // Draws each of the given (already-filtered) sessions as a colored
+    // rectangle positioned by start time and sized by duration. The span
+    // itself (the strip's time axis) is always computed from the full,
+    // unfiltered day - from the day's earliest session to either "now" (if
+    // viewing today) or the day's latest session end - so filtered results
+    // still land in their correct absolute position, just with gaps where
+    // filtered-out sessions would have been.
+    private void RefreshTimelineStrip(List<Session> sessionsToRender)
     {
         TimelineStripCanvas.Children.Clear();
 
@@ -577,19 +875,20 @@ public partial class MainWindow : Window
         const double stripHeight = 40;
         const double minWidth = 3;
 
-        foreach (var session in _timelineSessions)
+        foreach (var session in sessionsToRender)
         {
             var end = session.End ?? spanEnd;
             var left = (session.Start - spanStart).TotalSeconds / totalSeconds * width;
             var rectWidth = Math.Max(minWidth, Math.Min(width - left, (end - session.Start).TotalSeconds / totalSeconds * width));
 
             var label = session.Memo?.Name ?? session.Domain ?? $"{session.Process} - {session.WindowTitle}";
+            var fill = session.Memo != null ? BrushFromHex(session.Memo.Color) : ColorForLabel(label);
 
             var rect = new Rectangle
             {
                 Width = rectWidth,
                 Height = stripHeight,
-                Fill = ColorForLabel(label),
+                Fill = fill,
                 ToolTip = $"{label} - {FormatDurationLong(end - session.Start)}"
             };
 
@@ -604,36 +903,18 @@ public partial class MainWindow : Window
 
     // Deterministic color per label - the same website/app/memo always gets
     // the same color, so the strip is scannable at a glance across refreshes.
-    private static Brush ColorForLabel(string label)
+    private static Brush ColorForLabel(string label) => BrushFromHex(ColorUtil.GetHashHexColor(label));
+
+    private static Brush BrushFromHex(string hex)
     {
-        unchecked
+        try
         {
-            var hash = 17;
-            foreach (var c in label)
-            {
-                hash = hash * 31 + c;
-            }
-
-            var hue = Math.Abs(hash) % 360;
-            return new SolidColorBrush(HsvToColor(hue, 0.55, 0.85));
+            return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)!);
         }
-    }
-
-    private static Color HsvToColor(double hue, double saturation, double value)
-    {
-        var c = value * saturation;
-        var x = c * (1 - Math.Abs(hue / 60.0 % 2 - 1));
-        var m = value - c;
-
-        double r, g, b;
-        if (hue < 60) { r = c; g = x; b = 0; }
-        else if (hue < 120) { r = x; g = c; b = 0; }
-        else if (hue < 180) { r = 0; g = c; b = x; }
-        else if (hue < 240) { r = 0; g = x; b = c; }
-        else if (hue < 300) { r = x; g = 0; b = c; }
-        else { r = c; g = 0; b = x; }
-
-        return Color.FromRgb((byte)((r + m) * 255), (byte)((g + m) * 255), (byte)((b + m) * 255));
+        catch
+        {
+            return Brushes.Gray;
+        }
     }
 
     private static string FormatDurationLong(TimeSpan span)
@@ -900,4 +1181,12 @@ public class TimelineRow
     public required string Process { get; init; }
     public required string WindowTitle { get; init; }
     public required string MemoDisplay { get; init; }
+}
+
+public class MemoRow
+{
+    public required int MemoId { get; init; }
+    public required string Name { get; init; }
+    public required string ColorHex { get; init; }
+    public required Brush ColorBrush { get; init; }
 }

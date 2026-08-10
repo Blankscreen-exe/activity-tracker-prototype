@@ -6,7 +6,45 @@
         xmlns:local="clr-namespace:ActivityTracker"
         xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
         mc:Ignorable="d"
-        Title="Activity Tracker" Height="780" Width="740" Icon="Assets/AppIcon.ico">
+        Title="Activity Tracker - Paused" Height="780" Width="740" Icon="Assets/AppIcon.ico">
+    <Window.Resources>
+        <!-- Shared table-cell templates: every table cell shows its full text
+             as a tooltip, since GridView columns clip long text with no
+             visible indication otherwise. Reused by property name across the
+             different row types (WindowUsageRow/SwitchLogRow/TimelineRow all
+             have a "Process"/"WindowTitle" property, etc.) since XAML data
+             binding resolves by name, not by declared CLR type. -->
+        <DataTemplate x:Key="LabelCellTemplate">
+            <TextBlock Text="{Binding Label}" ToolTip="{Binding Label}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="ValueCellTemplate">
+            <TextBlock Text="{Binding Value}" ToolTip="{Binding Value}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="ProcessCellTemplate">
+            <TextBlock Text="{Binding Process}" ToolTip="{Binding Process}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="WindowTitleCellTemplate">
+            <TextBlock Text="{Binding WindowTitle}" ToolTip="{Binding WindowTitle}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="TimeDisplayCellTemplate">
+            <TextBlock Text="{Binding TimeDisplay}" ToolTip="{Binding TimeDisplay}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="StartDisplayCellTemplate">
+            <TextBlock Text="{Binding StartDisplay}" ToolTip="{Binding StartDisplay}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="EndDisplayCellTemplate">
+            <TextBlock Text="{Binding EndDisplay}" ToolTip="{Binding EndDisplay}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="DurationDisplayCellTemplate">
+            <TextBlock Text="{Binding DurationDisplay}" ToolTip="{Binding DurationDisplay}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="MemoDisplayCellTemplate">
+            <TextBlock Text="{Binding MemoDisplay}" ToolTip="{Binding MemoDisplay}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+        <DataTemplate x:Key="NameCellTemplate">
+            <TextBlock Text="{Binding Name}" ToolTip="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+        </DataTemplate>
+    </Window.Resources>
     <Grid x:Name="RootGrid">
         <TabControl x:Name="MainTabControl" Margin="10" SelectionChanged="MainTabControl_SelectionChanged">
 
@@ -24,23 +62,47 @@
 
                     <TextBlock Grid.Row="0" Text="Activity Tracker" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
 
-                    <ListView Grid.Row="1" x:Name="StatusList" Margin="0,0,0,12">
-                        <ListView.View>
-                            <GridView>
-                                <GridViewColumn Header="Status" Width="180" DisplayMemberBinding="{Binding Label}"/>
-                                <GridViewColumn Header="Value" Width="440" DisplayMemberBinding="{Binding Value}"/>
-                            </GridView>
-                        </ListView.View>
-                    </ListView>
+                    <Border Grid.Row="1" BorderBrush="{StaticResource WmpBorderBrush}" BorderThickness="1" Background="{StaticResource WmpPanelBrush}" Padding="12" Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="140"/>
+                            </Grid.ColumnDefinitions>
 
-                    <Button Grid.Row="2" x:Name="ToggleButton" Content="Start Tracking" Height="48" FontSize="16" FontWeight="Bold"
-                            HorizontalAlignment="Stretch" Click="ToggleButton_Click" Margin="0,0,0,16"/>
+                            <Button Grid.Column="0" x:Name="StatusIconButton" Click="ToggleButton_Click"
+                                    Width="48" Height="48" Margin="0,0,16,0" VerticalAlignment="Center"
+                                    ToolTip="Click to start/stop tracking">
+                                <Path x:Name="StatusIconPath" Fill="{StaticResource WmpAccentBrush}" Stretch="Uniform" Width="20" Height="20"/>
+                            </Button>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <Border ClipToBounds="True" Height="22" Margin="0,0,0,8">
+                                    <Canvas x:Name="MarqueeCanvas">
+                                        <TextBlock x:Name="MarqueeText" Text="Not tracking" FontWeight="Bold"/>
+                                    </Canvas>
+                                </Border>
+                                <TextBlock>
+                                    <Run Text="Current memo: "/>
+                                    <Run x:Name="CurrentMemoInlineText" Text="(none)" FontWeight="Bold"/>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <Border Grid.Column="2" BorderBrush="{StaticResource WmpBorderBrush}" BorderThickness="1" Background="White" CornerRadius="4" Padding="8">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock x:Name="SessionDurationText" Text="00:00:00" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Current Session" FontSize="10" HorizontalAlignment="Center" Opacity="0.7"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
 
                     <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,16">
                         <TextBlock Text="Current memo:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <ComboBox x:Name="CurrentMemoBox" Width="220" IsEditable="True" Margin="0,0,8,0"/>
                         <Button Content="Set" Click="SetCurrentMemoButton_Click" Margin="0,0,8,0"/>
-                        <Button Content="Clear" Click="ClearCurrentMemoButton_Click"/>
+                        <Button Content="Clear" Click="ClearCurrentMemoButton_Click" Margin="0,0,8,0"/>
+                        <Button Content="Color..." Click="PickCurrentMemoColorButton_Click"/>
                     </StackPanel>
 
                     <TextBlock Grid.Row="4" Text="Today" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
@@ -54,8 +116,8 @@
                         <ListView Grid.Column="0" x:Name="TodayStatsList" Margin="0,0,12,0">
                             <ListView.View>
                                 <GridView>
-                                    <GridViewColumn Header="Metric" Width="180" DisplayMemberBinding="{Binding Label}"/>
-                                    <GridViewColumn Header="Value" Width="260" DisplayMemberBinding="{Binding Value}"/>
+                                    <GridViewColumn Header="Metric" Width="180" CellTemplate="{StaticResource LabelCellTemplate}"/>
+                                    <GridViewColumn Header="Value" Width="260" CellTemplate="{StaticResource ValueCellTemplate}"/>
                                 </GridView>
                             </ListView.View>
                         </ListView>
@@ -98,9 +160,9 @@
                     <ListView Grid.Row="3" x:Name="WindowUsageList" Margin="0,0,0,12">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Process" Width="140" DisplayMemberBinding="{Binding Process}"/>
-                                <GridViewColumn Header="Window Title" Width="330" DisplayMemberBinding="{Binding WindowTitle}"/>
-                                <GridViewColumn Header="Time" Width="90" DisplayMemberBinding="{Binding TimeDisplay}"/>
+                                <GridViewColumn Header="Process" Width="140" CellTemplate="{StaticResource ProcessCellTemplate}"/>
+                                <GridViewColumn Header="Window Title" Width="330" CellTemplate="{StaticResource WindowTitleCellTemplate}"/>
+                                <GridViewColumn Header="Time" Width="90" CellTemplate="{StaticResource TimeDisplayCellTemplate}"/>
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -109,11 +171,11 @@
                     <ListView Grid.Row="5" x:Name="SwitchLogList">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Start" Width="80" DisplayMemberBinding="{Binding StartDisplay}"/>
-                                <GridViewColumn Header="End" Width="80" DisplayMemberBinding="{Binding EndDisplay}"/>
-                                <GridViewColumn Header="Process" Width="110" DisplayMemberBinding="{Binding Process}"/>
-                                <GridViewColumn Header="Window Title" Width="230" DisplayMemberBinding="{Binding WindowTitle}"/>
-                                <GridViewColumn Header="Duration" Width="80" DisplayMemberBinding="{Binding DurationDisplay}"/>
+                                <GridViewColumn Header="Start" Width="80" CellTemplate="{StaticResource StartDisplayCellTemplate}"/>
+                                <GridViewColumn Header="End" Width="80" CellTemplate="{StaticResource EndDisplayCellTemplate}"/>
+                                <GridViewColumn Header="Process" Width="110" CellTemplate="{StaticResource ProcessCellTemplate}"/>
+                                <GridViewColumn Header="Window Title" Width="230" CellTemplate="{StaticResource WindowTitleCellTemplate}"/>
+                                <GridViewColumn Header="Duration" Width="80" CellTemplate="{StaticResource DurationDisplayCellTemplate}"/>
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -124,6 +186,7 @@
             <TabItem x:Name="TimelineTabItem" Header="Timeline">
                 <Grid Margin="16">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
@@ -142,7 +205,14 @@
                         <Button x:Name="DeleteTimelineButton" Content="Delete Selected" IsEnabled="False" Click="DeleteTimelineButton_Click"/>
                     </StackPanel>
 
-                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="Search window title:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox x:Name="TimelineSearchBox" Width="220" TextChanged="TimelineSearchBox_TextChanged" Margin="0,0,16,0"/>
+                        <TextBlock Text="Memo:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox x:Name="TimelineMemoFilterBox" Width="180" SelectionChanged="TimelineMemoFilterBox_SelectionChanged"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2" Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
@@ -155,20 +225,20 @@
                         <TextBlock Grid.Column="2" x:Name="TimelineStripEndText" VerticalAlignment="Center" Margin="6,0,0,0"/>
                     </Grid>
 
-                    <ListView Grid.Row="2" x:Name="TimelineList" SelectionMode="Extended" SelectionChanged="TimelineList_SelectionChanged" Margin="0,0,0,10">
+                    <ListView Grid.Row="3" x:Name="TimelineList" SelectionMode="Extended" SelectionChanged="TimelineList_SelectionChanged" Margin="0,0,0,10">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Start" Width="80" DisplayMemberBinding="{Binding StartDisplay}"/>
-                                <GridViewColumn Header="End" Width="80" DisplayMemberBinding="{Binding EndDisplay}"/>
-                                <GridViewColumn Header="Duration" Width="80" DisplayMemberBinding="{Binding DurationDisplay}"/>
-                                <GridViewColumn Header="Process" Width="110" DisplayMemberBinding="{Binding Process}"/>
-                                <GridViewColumn Header="Window Title" Width="230" DisplayMemberBinding="{Binding WindowTitle}"/>
-                                <GridViewColumn Header="Memo" Width="130" DisplayMemberBinding="{Binding MemoDisplay}"/>
+                                <GridViewColumn Header="Start" Width="80" CellTemplate="{StaticResource StartDisplayCellTemplate}"/>
+                                <GridViewColumn Header="End" Width="80" CellTemplate="{StaticResource EndDisplayCellTemplate}"/>
+                                <GridViewColumn Header="Duration" Width="80" CellTemplate="{StaticResource DurationDisplayCellTemplate}"/>
+                                <GridViewColumn Header="Process" Width="110" CellTemplate="{StaticResource ProcessCellTemplate}"/>
+                                <GridViewColumn Header="Window Title" Width="230" CellTemplate="{StaticResource WindowTitleCellTemplate}"/>
+                                <GridViewColumn Header="Memo" Width="130" CellTemplate="{StaticResource MemoDisplayCellTemplate}"/>
                             </GridView>
                         </ListView.View>
                     </ListView>
 
-                    <StackPanel Grid.Row="3" Orientation="Horizontal">
+                    <StackPanel Grid.Row="4" Orientation="Horizontal">
                         <TextBlock Text="Apply memo to selected:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <ComboBox x:Name="TimelineMemoBox" Width="220" IsEditable="True" Margin="0,0,8,0"/>
                         <Button Content="Apply to Selected" Click="ApplyMemoButton_Click" Margin="0,0,8,0"/>
@@ -191,6 +261,43 @@
                     <TextBlock Text="App usage - last 7 days" FontWeight="Bold" Margin="0,0,0,8"/>
                     <lvc:CartesianChart x:Name="WeeklyChart" Height="240"/>
                 </StackPanel>
+            </TabItem>
+
+            <!-- Memos tab -->
+            <TabItem x:Name="MemosTabItem" Header="Memos">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Memos" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+
+                    <ListView Grid.Row="1" x:Name="MemoManagementList" SelectionChanged="MemoManagementList_SelectionChanged" Margin="0,0,0,12">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Color" Width="60">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Width="20" Height="20" CornerRadius="3" BorderBrush="{StaticResource WmpBorderBrush}" BorderThickness="1" Background="{Binding ColorBrush}"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Name" Width="300" CellTemplate="{StaticResource NameCellTemplate}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                        <TextBlock Text="Name:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox x:Name="MemoEditNameBox" Width="200" Margin="0,0,12,0"/>
+                        <Border x:Name="MemoEditColorSwatch" Width="24" Height="24" BorderBrush="{StaticResource WmpBorderBrush}" BorderThickness="1" Margin="0,0,8,0"/>
+                        <Button Content="Change Color..." Click="MemoEditColorButton_Click" Margin="0,0,12,0"/>
+                        <Button Content="Save Changes" Click="SaveMemoEditButton_Click" Margin="0,0,8,0"/>
+                        <Button Content="Delete Memo" Click="DeleteMemoButton_Click"/>
+                    </StackPanel>
+                </Grid>
             </TabItem>
 
             <!-- Settings tab -->
