@@ -19,7 +19,7 @@ public static class MemoRepository
         var memo = db.Memos.FirstOrDefault(m => m.Name == name);
         if (memo == null)
         {
-            memo = new Memo { Name = name };
+            memo = new Memo { Name = name, Color = ColorUtil.GetHashHexColor(name) };
             db.Memos.Add(memo);
             db.SaveChanges();
         }
