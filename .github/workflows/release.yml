@@ -1,0 +1,54 @@
+name: Release
+
+# Push a tag like "v1.2.3" to trigger this - it builds a self-contained,
+# single-file Windows executable stamped with that version, zips it, and
+# publishes a GitHub Release with the zip attached and auto-generated notes.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore src/ActivityTracker/ActivityTracker.csproj
+
+      - name: Publish
+        run: >
+          dotnet publish src/ActivityTracker/ActivityTracker.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish
+
+      - name: Zip published output
+        shell: pwsh
+        run: Compress-Archive -Path publish/* -DestinationPath Tempo-${{ steps.version.outputs.version }}-win-x64.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Tempo ${{ steps.version.outputs.version }}
+          files: Tempo-${{ steps.version.outputs.version }}-win-x64.zip
+          generate_release_notes: true
