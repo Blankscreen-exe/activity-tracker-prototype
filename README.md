@@ -4,6 +4,8 @@ A Windows desktop app that tracks which window (and, for browsers, which tab) is
 the foreground and how long you spend on it, with a WPF UI, a CLI summary command,
 and both a SQLite database and structured JSONL logs.
 
+**Website**: https://blankscreen-exe.github.io/activity-tracker-prototype/
+
 ## Preview
 
 ![preview](docs/images/preview.png)
