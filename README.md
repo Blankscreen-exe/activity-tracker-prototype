@@ -1,4 +1,4 @@
-# Activity Tracker
+![alt text](docs/images/readme_title.jpg)
 
 A Windows desktop app that tracks which window (and, for browsers, which tab) is in
 the foreground and how long you spend on it, with a WPF UI, a CLI summary command,
