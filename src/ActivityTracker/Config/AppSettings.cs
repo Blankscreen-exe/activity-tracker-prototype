@@ -29,6 +29,10 @@ public class AppSettings
 
     public string? WallpaperPath { get; set; }
 
+    // The memo automatically applied to every new session until changed -
+    // see TrackingService.StartNewSession.
+    public string? ActiveMemoName { get; set; }
+
     public static AppSettings Current { get; private set; } = new();
 
     private static string ConfigPath =>

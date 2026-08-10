@@ -195,6 +195,12 @@ public class TrackingService
         session.Duration = endTime - session.Start;
 
         using var db = new AppDbContext();
+
+        // Auto-tag with whatever memo is currently "active" (see
+        // AppSettings.ActiveMemoName), if any - resolved here rather than at
+        // StartNewSession so the frequent focus-change path stays DB-free.
+        session.MemoId = MemoRepository.ResolveOrCreate(db, AppSettings.Current.ActiveMemoName);
+
         db.Sessions.Add(session);
         db.SaveChanges();
 
