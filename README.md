@@ -17,11 +17,21 @@ and both a SQLite database and structured JSONL logs.
 - Every session is persisted to a SQLite database (via EF Core) **and** appended to a
   per-day JSONL log file, so you always have both a queryable DB and a plain-text log.
 - `ActivityTracker.exe summary [date]` prints a detailed daily report to the console.
-- WPF UI with four tabs: **Tracker** (live status + today's stats + pie chart),
-  **Summary** (per-day breakdown with charts, tables, and a date picker limited to
-  days that actually have data), **Trends** (activity by hour, app usage over the
-  last 7 days), and **Settings** (poll interval, idle threshold, process-name lists,
-  wallpaper).
+- WPF UI with six tabs: **Tracker** (Play/Pause toggle, current-memo tagging, live
+  KPI/marquee status, today's stats + pie chart), **Summary** (per-day breakdown
+  with charts, tables, and a date picker limited to days that actually have data),
+  **Timeline** (chronological session list with search and memo filters,
+  multi-select bulk memo tagging/deletion, and a color-coded visual timeline
+  strip), **Trends** (activity by hour, app usage over the last 7 days), **Memos**
+  (create, rename, recolor, and delete memos), and **Settings** (poll interval,
+  idle threshold, process-name lists, wallpaper).
+- Manual activity tagging via memos: set a "current memo" that auto-tags every
+  session going forward until you change it, retroactively re-tag past sessions
+  from the Timeline tab, and give each memo its own color (native color picker)
+  that shows up everywhere it's referenced, including the timeline strip.
+- Tracking does **not** start automatically - launch the app and click the
+  Play icon on the Tracker tab when you're ready.
+- Charts (via LiveCharts2) on the Tracker, Summary, and Trends tabs.
 - Retro Windows XP / Windows Media Player-styled theme (Tahoma font, Luna-blue
   gradients, rounded buttons) applied across the whole UI.
 
@@ -45,8 +55,9 @@ manual `dotnet ef database update` step is required.
 
 ## Usage
 
-**GUI**: launch `ActivityTracker.exe` with no arguments. Hit "Start Tracking" and it
-runs in the background while you use your PC normally.
+**GUI**: launch `ActivityTracker.exe` with no arguments. Tracking does not start
+automatically - click the Play icon on the Tracker tab, and it runs in the
+background while you use your PC normally.
 
 **CLI summary**:
 
@@ -71,6 +82,7 @@ on first run:
 | `codingProcessNames` | Process names counted toward "coding time" (e.g. `Code`, `devenv`). |
 | `browserProcessNames` | Process names treated as browsers for tab/URL extraction and "browsing time". |
 | `wallpaperPath` | Optional background image for the main window. |
+| `activeMemoName` | The memo currently auto-applied to new sessions (set via the Tracker tab); `null` when none is active. |
 
 Most of these (aside from the date format) are also editable from the Settings tab,
 which writes back to the same file.
@@ -88,14 +100,15 @@ machine's local timezone for display in the UI and CLI output.
 
 | Folder | Contents |
 |---|---|
-| `Models` | `Session`, the core tracked-activity record. |
-| `Data` | EF Core `AppDbContext` and migrations. |
+| `Models` | `Session` (tracked-activity record) and `Memo` (a tag with a name and color). |
+| `Data` | EF Core `AppDbContext`, migrations, `MemoRepository` (find-or-create memos by name), and `ColorUtil` (deterministic label-to-color hashing). |
 | `Native` | Win32 P/Invoke, the foreground-window event hook, and UI Automation browser-tab reading. |
-| `Tracking` | `TrackingService`, which ties the hook, idle polling, DB, and JSONL logger together. |
+| `Tracking` | `TrackingService`, which ties the hook, idle polling, DB, JSONL logger, and current-memo auto-tagging together. |
 | `Logging` | The JSONL session logger. |
 | `Stats` | Daily/weekly/hourly stats calculations and the CLI summary text formatter. |
 | `Config` | `AppSettings`, loaded from and saved to `config.json`. |
 | `Themes` | The retro XP/WMP WPF style resources. |
+| `Assets` | The application icon (`AppIcon.ico`). |
 
 ## Known limitations
 
