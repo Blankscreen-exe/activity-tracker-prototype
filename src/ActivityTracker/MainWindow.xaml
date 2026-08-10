@@ -18,6 +18,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -35,9 +36,16 @@
                     <Button Grid.Row="2" x:Name="ToggleButton" Content="Start Tracking" Height="48" FontSize="16" FontWeight="Bold"
                             HorizontalAlignment="Stretch" Click="ToggleButton_Click" Margin="0,0,0,16"/>
 
-                    <TextBlock Grid.Row="3" Text="Today" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,16">
+                        <TextBlock Text="Current memo:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox x:Name="CurrentMemoBox" Width="220" IsEditable="True" Margin="0,0,8,0"/>
+                        <Button Content="Set" Click="SetCurrentMemoButton_Click" Margin="0,0,8,0"/>
+                        <Button Content="Clear" Click="ClearCurrentMemoButton_Click"/>
+                    </StackPanel>
 
-                    <Grid Grid.Row="4">
+                    <TextBlock Grid.Row="4" Text="Today" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                    <Grid Grid.Row="5">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="220"/>
@@ -109,6 +117,63 @@
                             </GridView>
                         </ListView.View>
                     </ListView>
+                </Grid>
+            </TabItem>
+
+            <!-- Timeline tab -->
+            <TabItem x:Name="TimelineTabItem" Header="Timeline">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="Date:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <DatePicker x:Name="TimelineDatePicker" Width="130" SelectedDateChanged="TimelineDatePicker_SelectedDateChanged" Margin="0,0,12,0"/>
+                        <TextBlock Text="Order:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox x:Name="TimelineSortOrderBox" Width="120" SelectionChanged="TimelineSortOrderBox_SelectionChanged" Margin="0,0,12,0">
+                            <ComboBoxItem Content="Earliest first"/>
+                            <ComboBoxItem Content="Latest first"/>
+                        </ComboBox>
+                        <Button Content="Refresh" Click="RefreshTimelineButton_Click" Margin="0,0,8,0"/>
+                        <Button x:Name="DeleteTimelineButton" Content="Delete Selected" IsEnabled="False" Click="DeleteTimelineButton_Click"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="TimelineStripStartText" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <Border Grid.Column="1" BorderBrush="{StaticResource WmpBorderBrush}" BorderThickness="1">
+                            <Canvas x:Name="TimelineStripCanvas" Height="40" ClipToBounds="True" SizeChanged="TimelineStripCanvas_SizeChanged"/>
+                        </Border>
+                        <TextBlock Grid.Column="2" x:Name="TimelineStripEndText" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    </Grid>
+
+                    <ListView Grid.Row="2" x:Name="TimelineList" SelectionMode="Extended" SelectionChanged="TimelineList_SelectionChanged" Margin="0,0,0,10">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Start" Width="80" DisplayMemberBinding="{Binding StartDisplay}"/>
+                                <GridViewColumn Header="End" Width="80" DisplayMemberBinding="{Binding EndDisplay}"/>
+                                <GridViewColumn Header="Duration" Width="80" DisplayMemberBinding="{Binding DurationDisplay}"/>
+                                <GridViewColumn Header="Process" Width="110" DisplayMemberBinding="{Binding Process}"/>
+                                <GridViewColumn Header="Window Title" Width="230" DisplayMemberBinding="{Binding WindowTitle}"/>
+                                <GridViewColumn Header="Memo" Width="130" DisplayMemberBinding="{Binding MemoDisplay}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+
+                    <StackPanel Grid.Row="3" Orientation="Horizontal">
+                        <TextBlock Text="Apply memo to selected:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox x:Name="TimelineMemoBox" Width="220" IsEditable="True" Margin="0,0,8,0"/>
+                        <Button Content="Apply to Selected" Click="ApplyMemoButton_Click" Margin="0,0,8,0"/>
+                        <Button Content="Clear Memo on Selected" Click="ClearMemoButton_Click"/>
+                    </StackPanel>
                 </Grid>
             </TabItem>
 

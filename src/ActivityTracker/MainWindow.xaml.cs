@@ -12,6 +12,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using ActivityTracker.Config;
+using ActivityTracker.Data;
 using ActivityTracker.Logging;
 using ActivityTracker.Models;
 using ActivityTracker.Stats;
@@ -19,6 +20,7 @@ using ActivityTracker.Tracking;
 using LiveChartsCore;
 using LiveChartsCore.Kernel;
 using LiveChartsCore.SkiaSharpView;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Win32;
 
 namespace ActivityTracker;
@@ -33,6 +35,8 @@ public partial class MainWindow : Window
     private bool _isTracking;
     private string _currentActivityDisplay = "-";
     private DateTime? _currentSessionStartUtc;
+    private List<Session> _timelineSessions = new();
+    private DateTime _timelineDate = DateTime.Today;
 
     public MainWindow()
     {
@@ -53,9 +57,14 @@ public partial class MainWindow : Window
 
         Closing += (_, _) => StopTracking();
 
+        TimelineSortOrderBox.SelectedIndex = 0;
+
         LoadSettingsIntoForm();
         ApplyWallpaper();
         ConfigureSummaryDatePicker();
+        ConfigureTimelineDatePicker();
+        RefreshMemoPickers();
+        RefreshTimelineTab();
         RefreshTrendsTab();
         StartTracking();
     }
@@ -117,7 +126,8 @@ public partial class MainWindow : Window
         {
             new() { Label = "Status", Value = _isTracking ? "Tracking" : "Stopped" },
             new() { Label = "Currently Tracking", Value = _currentActivityDisplay },
-            new() { Label = "Current Session Duration", Value = currentSessionDuration }
+            new() { Label = "Current Session Duration", Value = currentSessionDuration },
+            new() { Label = "Current Memo", Value = AppSettings.Current.ActiveMemoName ?? "(none)" }
         };
 
         var topWebsite = stats.TopWebsites.Count > 0
@@ -282,56 +292,9 @@ public partial class MainWindow : Window
         RefreshSummaryTab();
     }
 
-    // Only lets the user pick a day that actually has a log file, plus today
-    // (even before a log file for today exists yet).
     private void ConfigureSummaryDatePicker()
     {
-        var availableDates = JsonlSessionLogger.GetAvailableLogDates();
-
-        if (!availableDates.Contains(DateTime.Today))
-        {
-            availableDates.Add(DateTime.Today);
-        }
-
-        var previouslySelected = SummaryDatePicker.SelectedDate;
-
-        var sorted = availableDates.Distinct().OrderBy(d => d).ToList();
-        var minDate = sorted.First();
-        var maxDate = DateTime.Today;
-
-        SummaryDatePicker.DisplayDateStart = minDate;
-        SummaryDatePicker.DisplayDateEnd = maxDate;
-
-        var availableSet = new HashSet<DateTime>(sorted);
-        SummaryDatePicker.BlackoutDates.Clear();
-
-        var current = minDate;
-        DateTime? gapStart = null;
-
-        while (current <= maxDate)
-        {
-            if (availableSet.Contains(current))
-            {
-                if (gapStart != null)
-                {
-                    SummaryDatePicker.BlackoutDates.Add(new CalendarDateRange(gapStart.Value, current.AddDays(-1)));
-                    gapStart = null;
-                }
-            }
-            else
-            {
-                gapStart ??= current;
-            }
-
-            current = current.AddDays(1);
-        }
-
-        if (gapStart != null)
-        {
-            SummaryDatePicker.BlackoutDates.Add(new CalendarDateRange(gapStart.Value, maxDate));
-        }
-
-        SummaryDatePicker.SelectedDate = previouslySelected ?? DateTime.Today;
+        ConfigureDatePicker(SummaryDatePicker);
     }
 
     private void RefreshSummaryButton_Click(object sender, RoutedEventArgs e)
@@ -359,6 +322,12 @@ public partial class MainWindow : Window
         {
             ConfigureSummaryDatePicker();
             RefreshSummaryTab();
+        }
+        else if (MainTabControl.SelectedItem == TimelineTabItem)
+        {
+            ConfigureTimelineDatePicker();
+            RefreshMemoPickers();
+            RefreshTimelineTab();
         }
         else if (MainTabControl.SelectedItem == TrendsTabItem)
         {
@@ -462,6 +431,358 @@ public partial class MainWindow : Window
         CodingProcessNamesBox.Text = string.Join(Environment.NewLine, settings.CodingProcessNames);
         BrowserProcessNamesBox.Text = string.Join(Environment.NewLine, settings.BrowserProcessNames);
         WallpaperPathBox.Text = settings.WallpaperPath ?? string.Empty;
+        CurrentMemoBox.Text = settings.ActiveMemoName ?? string.Empty;
+    }
+
+    private void RefreshMemoPickers()
+    {
+        var names = MemoRepository.GetAllNames();
+        CurrentMemoBox.ItemsSource = names;
+        TimelineMemoBox.ItemsSource = names;
+    }
+
+    private void SetCurrentMemoButton_Click(object sender, RoutedEventArgs e)
+    {
+        var name = (CurrentMemoBox.Text ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            AppSettings.Current.ActiveMemoName = null;
+        }
+        else
+        {
+            using var db = new AppDbContext();
+            MemoRepository.ResolveOrCreate(db, name);
+            AppSettings.Current.ActiveMemoName = name;
+        }
+
+        AppSettings.Save();
+        RefreshMemoPickers();
+        RefreshTrackerTab();
+    }
+
+    private void ClearCurrentMemoButton_Click(object sender, RoutedEventArgs e)
+    {
+        AppSettings.Current.ActiveMemoName = null;
+        CurrentMemoBox.Text = string.Empty;
+        AppSettings.Save();
+        RefreshTrackerTab();
+    }
+
+    // Timeline tab shows whichever date is selected, chronological, with
+    // multi-select bulk memo tagging. Deliberately NOT part of the 10s
+    // ambient refresh timer - resetting the list would drop the user's
+    // in-progress selection, which is exactly the friction we want to avoid.
+    private void RefreshTimelineTab()
+    {
+        var date = TimelineDatePicker.SelectedDate ?? DateTime.Today;
+        _timelineDate = date;
+
+        var dayStart = date.Date.ToUniversalTime();
+        var dayEnd = dayStart.AddDays(1);
+
+        var descending = (TimelineSortOrderBox.SelectedItem as ComboBoxItem)?.Content as string == "Latest first";
+
+        using (var db = new AppDbContext())
+        {
+            var query = db.Sessions
+                .Include(s => s.Memo)
+                .Where(s => s.Start >= dayStart && s.Start < dayEnd && s.Duration != null);
+
+            _timelineSessions = descending
+                ? query.OrderByDescending(s => s.Start).ToList()
+                : query.OrderBy(s => s.Start).ToList();
+        }
+
+        TimelineList.ItemsSource = _timelineSessions
+            .Select(s => new TimelineRow
+            {
+                SessionId = s.Id,
+                StartDisplay = s.Start.ToLocalTime().ToString("h:mm:ss tt"),
+                EndDisplay = s.End?.ToLocalTime().ToString("h:mm:ss tt") ?? "-",
+                DurationDisplay = (s.Duration ?? TimeSpan.Zero).ToString(@"hh\:mm\:ss"),
+                Process = s.Process,
+                WindowTitle = s.WindowTitle,
+                MemoDisplay = s.Memo?.Name ?? "-"
+            })
+            .ToList();
+
+        DeleteTimelineButton.IsEnabled = false;
+
+        RefreshTimelineStrip();
+    }
+
+    private void TimelineList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        DeleteTimelineButton.IsEnabled = TimelineList.SelectedItems.Count > 0;
+    }
+
+    private void DeleteTimelineButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selectedIds = TimelineList.SelectedItems.Cast<TimelineRow>().Select(r => r.SessionId).ToList();
+        if (selectedIds.Count == 0)
+        {
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            this,
+            $"Delete {selectedIds.Count} selected entr{(selectedIds.Count == 1 ? "y" : "ies")}? This cannot be undone.",
+            "Activity Tracker",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        using (var db = new AppDbContext())
+        {
+            var sessions = db.Sessions.Where(s => selectedIds.Contains(s.Id)).ToList();
+            db.Sessions.RemoveRange(sessions);
+            db.SaveChanges();
+        }
+
+        RefreshTimelineTab();
+    }
+
+    private void TimelineStripCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        RefreshTimelineStrip();
+    }
+
+    // Draws each session as a colored rectangle positioned by start time and
+    // sized by duration, spanning from the day's earliest session to either
+    // "now" (if viewing today) or the day's latest session end. Hovering a
+    // rectangle shows a tooltip with its label and duration.
+    private void RefreshTimelineStrip()
+    {
+        TimelineStripCanvas.Children.Clear();
+
+        var width = TimelineStripCanvas.ActualWidth;
+        if (width <= 0 || _timelineSessions.Count == 0)
+        {
+            TimelineStripStartText.Text = string.Empty;
+            TimelineStripEndText.Text = string.Empty;
+            return;
+        }
+
+        var spanStart = _timelineSessions.Min(s => s.Start);
+        var spanEnd = _timelineDate.Date == DateTime.Today
+            ? DateTime.UtcNow
+            : _timelineSessions.Max(s => s.End ?? s.Start);
+
+        var totalSeconds = Math.Max(1, (spanEnd - spanStart).TotalSeconds);
+        const double stripHeight = 40;
+        const double minWidth = 3;
+
+        foreach (var session in _timelineSessions)
+        {
+            var end = session.End ?? spanEnd;
+            var left = (session.Start - spanStart).TotalSeconds / totalSeconds * width;
+            var rectWidth = Math.Max(minWidth, Math.Min(width - left, (end - session.Start).TotalSeconds / totalSeconds * width));
+
+            var label = session.Memo?.Name ?? session.Domain ?? $"{session.Process} - {session.WindowTitle}";
+
+            var rect = new Rectangle
+            {
+                Width = rectWidth,
+                Height = stripHeight,
+                Fill = ColorForLabel(label),
+                ToolTip = $"{label} - {FormatDurationLong(end - session.Start)}"
+            };
+
+            Canvas.SetLeft(rect, left);
+            Canvas.SetTop(rect, 0);
+            TimelineStripCanvas.Children.Add(rect);
+        }
+
+        TimelineStripStartText.Text = spanStart.ToLocalTime().ToString("h:mm tt");
+        TimelineStripEndText.Text = spanEnd.ToLocalTime().ToString("h:mm tt");
+    }
+
+    // Deterministic color per label - the same website/app/memo always gets
+    // the same color, so the strip is scannable at a glance across refreshes.
+    private static Brush ColorForLabel(string label)
+    {
+        unchecked
+        {
+            var hash = 17;
+            foreach (var c in label)
+            {
+                hash = hash * 31 + c;
+            }
+
+            var hue = Math.Abs(hash) % 360;
+            return new SolidColorBrush(HsvToColor(hue, 0.55, 0.85));
+        }
+    }
+
+    private static Color HsvToColor(double hue, double saturation, double value)
+    {
+        var c = value * saturation;
+        var x = c * (1 - Math.Abs(hue / 60.0 % 2 - 1));
+        var m = value - c;
+
+        double r, g, b;
+        if (hue < 60) { r = c; g = x; b = 0; }
+        else if (hue < 120) { r = x; g = c; b = 0; }
+        else if (hue < 180) { r = 0; g = c; b = x; }
+        else if (hue < 240) { r = 0; g = x; b = c; }
+        else if (hue < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+
+        return Color.FromRgb((byte)((r + m) * 255), (byte)((g + m) * 255), (byte)((b + m) * 255));
+    }
+
+    private static string FormatDurationLong(TimeSpan span)
+    {
+        var hours = (int)span.TotalHours;
+        var minutes = span.Minutes;
+
+        if (hours > 0)
+        {
+            return minutes > 0 ? $"{hours} hr(s) {minutes} min(s)" : $"{hours} hr(s)";
+        }
+
+        if (span.TotalMinutes >= 1)
+        {
+            return $"{(int)span.TotalMinutes} min(s)";
+        }
+
+        return $"{(int)span.TotalSeconds} sec(s)";
+    }
+
+    private void TimelineDatePicker_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RefreshTimelineTab();
+    }
+
+    private void TimelineSortOrderBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RefreshTimelineTab();
+    }
+
+    private void RefreshTimelineButton_Click(object sender, RoutedEventArgs e)
+    {
+        ConfigureTimelineDatePicker();
+        RefreshTimelineTab();
+    }
+
+    private void ApplyMemoButton_Click(object sender, RoutedEventArgs e)
+    {
+        var name = (TimelineMemoBox.Text ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            MessageBox.Show(this, "Type or pick a memo name first.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var selectedIds = TimelineList.SelectedItems.Cast<TimelineRow>().Select(r => r.SessionId).ToList();
+        if (selectedIds.Count == 0)
+        {
+            MessageBox.Show(this, "Select one or more rows first.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        using (var db = new AppDbContext())
+        {
+            var memoId = MemoRepository.ResolveOrCreate(db, name);
+            var sessions = db.Sessions.Where(s => selectedIds.Contains(s.Id)).ToList();
+
+            foreach (var session in sessions)
+            {
+                session.MemoId = memoId;
+            }
+
+            db.SaveChanges();
+        }
+
+        RefreshMemoPickers();
+        RefreshTimelineTab();
+    }
+
+    private void ClearMemoButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selectedIds = TimelineList.SelectedItems.Cast<TimelineRow>().Select(r => r.SessionId).ToList();
+        if (selectedIds.Count == 0)
+        {
+            MessageBox.Show(this, "Select one or more rows first.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        using (var db = new AppDbContext())
+        {
+            var sessions = db.Sessions.Where(s => selectedIds.Contains(s.Id)).ToList();
+
+            foreach (var session in sessions)
+            {
+                session.MemoId = null;
+            }
+
+            db.SaveChanges();
+        }
+
+        RefreshTimelineTab();
+    }
+
+    // Only lets the user pick a day that actually has a log file, plus today
+    // (even before a log file for today exists yet). Shared by Summary and Timeline.
+    private static void ConfigureDatePicker(DatePicker picker)
+    {
+        var availableDates = JsonlSessionLogger.GetAvailableLogDates();
+
+        if (!availableDates.Contains(DateTime.Today))
+        {
+            availableDates.Add(DateTime.Today);
+        }
+
+        var previouslySelected = picker.SelectedDate;
+
+        var sorted = availableDates.Distinct().OrderBy(d => d).ToList();
+        var minDate = sorted.First();
+        var maxDate = DateTime.Today;
+
+        picker.DisplayDateStart = minDate;
+        picker.DisplayDateEnd = maxDate;
+
+        var availableSet = new HashSet<DateTime>(sorted);
+        picker.BlackoutDates.Clear();
+
+        var current = minDate;
+        DateTime? gapStart = null;
+
+        while (current <= maxDate)
+        {
+            if (availableSet.Contains(current))
+            {
+                if (gapStart != null)
+                {
+                    picker.BlackoutDates.Add(new CalendarDateRange(gapStart.Value, current.AddDays(-1)));
+                    gapStart = null;
+                }
+            }
+            else
+            {
+                gapStart ??= current;
+            }
+
+            current = current.AddDays(1);
+        }
+
+        if (gapStart != null)
+        {
+            picker.BlackoutDates.Add(new CalendarDateRange(gapStart.Value, maxDate));
+        }
+
+        picker.SelectedDate = previouslySelected ?? DateTime.Today;
+    }
+
+    private void ConfigureTimelineDatePicker()
+    {
+        ConfigureDatePicker(TimelineDatePicker);
     }
 
     private void BrowseWallpaperButton_Click(object sender, RoutedEventArgs e)
@@ -568,4 +889,15 @@ public class SwitchLogRow
     public required string Process { get; init; }
     public required string WindowTitle { get; init; }
     public required string DurationDisplay { get; init; }
+}
+
+public class TimelineRow
+{
+    public required int SessionId { get; init; }
+    public required string StartDisplay { get; init; }
+    public required string EndDisplay { get; init; }
+    public required string DurationDisplay { get; init; }
+    public required string Process { get; init; }
+    public required string WindowTitle { get; init; }
+    public required string MemoDisplay { get; init; }
 }
