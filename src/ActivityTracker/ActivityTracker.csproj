@@ -8,10 +8,14 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <!-- Baseline for local/dev builds; the release workflow overrides this
+         with the pushed tag's version via `dotnet publish -p:Version=...`. -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <Resource Include="Assets\AppIcon.ico" />
+    <Resource Include="Assets\LogoIcon.png" />
   </ItemGroup>
 
   <!-- UseWindowsForms (needed only for the native ColorDialog) auto-adds

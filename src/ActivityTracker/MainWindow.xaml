@@ -340,6 +340,42 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- About tab -->
+            <TabItem Header="About">
+                <StackPanel Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Image Source="Assets/LogoIcon.png" Width="64" Height="64" Margin="0,0,0,12"/>
+                    <TextBlock Text="Tempo" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Activity Tracker" FontSize="14" HorizontalAlignment="Center" Opacity="0.7" Margin="0,0,0,16"/>
+                    <TextBlock x:Name="AboutVersionText" Text="Version" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+
+                    <TextBlock TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center" Margin="0,0,0,16">
+                        Tracks your active windows and browser tabs, lets you tag your time with
+                        colored memos, and shows it all back to you in charts and a visual
+                        timeline - 100% local, nothing leaves your PC.
+                    </TextBlock>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,4">
+                        <TextBlock Text="Website: "/>
+                        <TextBlock>
+                            <Hyperlink NavigateUri="https://blankscreen-exe.github.io/activity-tracker-prototype/" RequestNavigate="Hyperlink_RequestNavigate">
+                                blankscreen-exe.github.io/activity-tracker-prototype
+                            </Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                        <TextBlock Text="Source: "/>
+                        <TextBlock>
+                            <Hyperlink NavigateUri="https://github.com/Blankscreen-exe/activity-tracker-prototype" RequestNavigate="Hyperlink_RequestNavigate">
+                                github.com/Blankscreen-exe/activity-tracker-prototype
+                            </Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <TextBlock Text="Licensed under the MIT License" HorizontalAlignment="Center" Opacity="0.7"/>
+                </StackPanel>
+            </TabItem>
+
         </TabControl>
     </Grid>
 </Window>

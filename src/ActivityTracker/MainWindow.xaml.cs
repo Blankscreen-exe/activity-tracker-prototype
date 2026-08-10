@@ -75,6 +75,9 @@ public partial class MainWindow : Window
 
         RefreshMemosTab();
 
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        AboutVersionText.Text = version != null ? $"Version {version.Major}.{version.Minor}.{version.Build}" : "Version unknown";
+
         // Tracking no longer auto-starts - the user explicitly hits Start.
         // Still populate the Tracker tab once so it doesn't sit blank.
         StatusIconPath.Data = PlayIconGeometry;
@@ -240,6 +243,12 @@ public partial class MainWindow : Window
         RefreshMemoPickers();
         UpdateCurrentMemoDisplay();
         RefreshTrackerTab();
+    }
+
+    private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
     }
 
     private void ToggleButton_Click(object sender, RoutedEventArgs e)
