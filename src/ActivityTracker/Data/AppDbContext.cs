@@ -7,6 +7,7 @@ namespace ActivityTracker.Data;
 public class AppDbContext : DbContext
 {
     public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<Memo> Memos => Set<Memo>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

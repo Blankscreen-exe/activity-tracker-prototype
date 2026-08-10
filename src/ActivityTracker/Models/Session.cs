@@ -11,4 +11,6 @@ public class Session
     public string? TabTitle { get; set; }
     public string? Url { get; set; }
     public string? Domain { get; set; }
+    public int? MemoId { get; set; }
+    public Memo? Memo { get; set; }
 }
