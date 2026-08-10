@@ -91,7 +91,7 @@
                             <Border Grid.Column="2" BorderBrush="{StaticResource WmpBorderBrush}" BorderThickness="1" Background="White" CornerRadius="4" Padding="8">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock x:Name="SessionDurationText" Text="00:00:00" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="Current Session" FontSize="10" HorizontalAlignment="Center" Opacity="0.7"/>
+                                    <TextBlock Text="Tracking Time" FontSize="10" HorizontalAlignment="Center" Opacity="0.7"/>
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -268,13 +268,20 @@
                 <Grid Margin="16">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Text="Memos" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
 
-                    <ListView Grid.Row="1" x:Name="MemoManagementList" SelectionChanged="MemoManagementList_SelectionChanged" Margin="0,0,0,12">
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+                        <TextBlock Text="New memo name:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox x:Name="NewMemoNameBox" Width="200" Margin="0,0,8,0"/>
+                        <Button Content="Add Memo" Click="AddMemoButton_Click"/>
+                    </StackPanel>
+
+                    <ListView Grid.Row="2" x:Name="MemoManagementList" SelectionChanged="MemoManagementList_SelectionChanged" Margin="0,0,0,12">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="Color" Width="60">
@@ -289,7 +296,7 @@
                         </ListView.View>
                     </ListView>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                    <StackPanel Grid.Row="3" Orientation="Horizontal">
                         <TextBlock Text="Name:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                         <TextBox x:Name="MemoEditNameBox" Width="200" Margin="0,0,12,0"/>
                         <Border x:Name="MemoEditColorSwatch" Width="24" Height="24" BorderBrush="{StaticResource WmpBorderBrush}" BorderThickness="1" Margin="0,0,8,0"/>

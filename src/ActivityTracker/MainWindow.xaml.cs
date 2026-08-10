@@ -38,7 +38,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _refreshTimer;
     private bool _isTracking;
     private string _currentActivityDisplay = "-";
-    private DateTime? _currentSessionStartUtc;
+    private DateTime? _trackingStartedUtc;
     private List<Session> _timelineSessions = new();
     private DateTime _timelineDate = DateTime.Today;
     private int? _selectedMemoEditId;
@@ -80,6 +80,33 @@ public partial class MainWindow : Window
         StatusIconPath.Data = PlayIconGeometry;
         UpdateCurrentMemoDisplay();
         RefreshTrackerTab();
+    }
+
+    // Creates a memo on its own - does NOT touch AppSettings.ActiveMemoName
+    // or tag any session, unlike every other memo-creating path in the app.
+    private void AddMemoButton_Click(object sender, RoutedEventArgs e)
+    {
+        var name = (NewMemoNameBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            MessageBox.Show(this, "Enter a memo name first.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        using (var db = new AppDbContext())
+        {
+            if (db.Memos.Any(m => m.Name == name))
+            {
+                MessageBox.Show(this, "A memo with that name already exists.", "Activity Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            MemoRepository.ResolveOrCreate(db, name);
+        }
+
+        NewMemoNameBox.Text = string.Empty;
+        RefreshMemosTab();
+        RefreshMemoPickers();
     }
 
     private void RefreshMemosTab()
@@ -232,6 +259,7 @@ public partial class MainWindow : Window
         _trackingService.Start();
         _refreshTimer.Start();
         _isTracking = true;
+        _trackingStartedUtc = DateTime.UtcNow;
         Title = "Activity Tracker - Tracking";
         StatusIconPath.Data = PauseIconGeometry;
         RefreshTrackerTab();
@@ -248,7 +276,7 @@ public partial class MainWindow : Window
         _refreshTimer.Stop();
         _isTracking = false;
         _currentActivityDisplay = "-";
-        _currentSessionStartUtc = null;
+        _trackingStartedUtc = null;
         Title = "Activity Tracker - Paused";
         StatusIconPath.Data = PlayIconGeometry;
         UpdateMarquee("Not tracking");
@@ -258,7 +286,6 @@ public partial class MainWindow : Window
     private void OnSessionStarted(Session session)
     {
         _currentActivityDisplay = $"{session.Process} - {session.WindowTitle}";
-        _currentSessionStartUtc = session.Start;
         UpdateMarquee(_currentActivityDisplay);
         RefreshTrackerTab();
     }
@@ -348,8 +375,11 @@ public partial class MainWindow : Window
     {
         var stats = StatsCalculator.Calculate(DateTime.Today);
 
-        SessionDurationText.Text = _currentSessionStartUtc.HasValue
-            ? (DateTime.UtcNow - _currentSessionStartUtc.Value).ToString(@"hh\:mm\:ss")
+        // Time since tracking was started (StartTracking), not the current
+        // window's individual session - switching windows shouldn't reset
+        // this, since it reads as "how long has tracking been running".
+        SessionDurationText.Text = _trackingStartedUtc.HasValue
+            ? (DateTime.UtcNow - _trackingStartedUtc.Value).ToString(@"hh\:mm\:ss")
             : "00:00:00";
 
         var topWebsite = stats.TopWebsites.Count > 0
